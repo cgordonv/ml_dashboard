@@ -1,37 +1,35 @@
 // src/services/api.ts
-// API service layer for real data integration
-import { NewsItem, SafetyAlert } from '../types/dashboard';
+import { Location, NewsItem, SafetyAlert } from '../types/dashboard';
 
-const WEATHER_API_KEY = import.meta.env.VITE_WEATHER_API_KEY as string | undefined;
-const NEWS_API_KEY = import.meta.env.VITE_NEWS_API_KEY as string | undefined;
-// const ACCUWEATHER_API_KEY = import.meta.env.VITE_ACCUWEATHER_API_KEY as string | undefined; // reserved (not used yet)
+const WEATHER_API_KEY = import.meta.env.VITE_WEATHER_API_KEY;
+const NEWS_API_KEY = import.meta.env.VITE_NEWS_API_KEY;
+const ACCUWEATHER_API_KEY = import.meta.env.VITE_ACCUWEATHER_API_KEY;
 
-// -----------------------------
-// Weather (OpenWeather Current)
-// -----------------------------
+// 👇 New: determines if you're on local dev or deployed
+const USE_PROXY = !import.meta.env.DEV; // true on Vercel, false locally
+
+// ----------------------------
+// WEATHER API
+// ----------------------------
 export async function fetchWeatherData(lat: number, lng: number) {
-  if (!WEATHER_API_KEY) {
-    console.warn('Weather API key not configured, using mock data');
-    return getMockWeatherData();
-  }
-
   try {
-    const response = await fetch(
-      `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${WEATHER_API_KEY}&units=imperial`
-    );
+    const url = USE_PROXY
+      ? `/api/weather?lat=${lat}&lng=${lng}`
+      : `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${WEATHER_API_KEY}&units=imperial`;
 
-    if (!response.ok) throw new Error(`Weather API request failed (${response.status})`);
+    const response = await fetch(url);
 
+    if (!response.ok) throw new Error('Weather API request failed');
     const data = await response.json();
 
     return {
-      temperature: Math.round(data.main?.temp),
-      condition: data.weather?.[0]?.description ?? '—',
-      humidity: data.main?.humidity ?? 0,
-      windSpeed: Math.round(data.wind?.speed ?? 0),
-      icon: getWeatherIcon(data.weather?.[0]?.main ?? ''),
-      updatedAt: data.dt ? data.dt * 1000 : Date.now(), // ms
-      locationName: data.name ?? 'Current Location',
+      temperature: Math.round(data.main.temp),
+      condition: data.weather[0].description,
+      humidity: data.main.humidity,
+      windSpeed: Math.round(data.wind.speed),
+      icon: getWeatherIcon(data.weather[0].main),
+      updatedAt: data.dt ? data.dt * 1000 : Date.now(),
+      locationName: data.name,
     };
   } catch (error) {
     console.error('Weather API error:', error);
@@ -39,68 +37,58 @@ export async function fetchWeatherData(lat: number, lng: number) {
   }
 }
 
-// -----------------------------
-// News (NewsAPI.org)
-// -----------------------------
+// ----------------------------
+// NEWS API
+// ----------------------------
 export async function fetchNewsData(location: string): Promise<NewsItem[]> {
-  if (!NEWS_API_KEY) {
-    console.warn('News API key not configured, using mock data');
-    return getMockNewsData();
-  }
-
   try {
     const query = encodeURIComponent(location);
-    const response = await fetch(
-      `https://newsapi.org/v2/everything?q=${query}&sortBy=publishedAt&pageSize=5&apiKey=${NEWS_API_KEY}`
-    );
+    const url = USE_PROXY
+      ? `/api/news?q=${query}`
+      : `https://newsapi.org/v2/everything?q=${query}&sortBy=publishedAt&pageSize=5&apiKey=${NEWS_API_KEY}`;
 
-    if (!response.ok) throw new Error(`News API request failed (${response.status})`);
-
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('News API request failed');
     const data = await response.json();
 
-    if (!Array.isArray(data?.articles)) return getMockNewsData();
-
-    return data.articles.map((article: any, index: number) => ({
+    return data.articles?.map((article: any, index: number) => ({
       id: `news-${index}`,
       title: article.title,
-      summary: article.description || article.title || '—',
+      summary: article.description || article.title,
       source: article.source?.name ?? 'Unknown',
-      publishedAt: article.publishedAt, // ISO string
+      publishedAt: article.publishedAt,
       category: 'Local',
-    }));
+      url: article.url,
+    })) ?? [];
   } catch (error) {
     console.error('News API error:', error);
     return getMockNewsData();
   }
 }
 
-// ----------------------------------------------------
-// Safety alerts (National Weather Service - api.weather.gov)
-// ----------------------------------------------------
+// ----------------------------
+// SAFETY ALERTS (NWS)
+// ----------------------------
 export async function fetchSafetyAlerts(lat: number, lng: number): Promise<SafetyAlert[]> {
   try {
-    const response = await fetch(
-      `https://api.weather.gov/alerts/active?point=${lat},${lng}`,
-      {
-        headers: {
-          // Required by NWS: identify your app + a contact
-          'User-Agent': 'news-weather-dashboard (youremail@example.com)',
-          'Accept': 'application/ld+json',
-        },
-      }
-    );
+    const url = USE_PROXY
+      ? `/api/alerts?lat=${lat}&lng=${lng}`
+      : `https://api.weather.gov/alerts/active?point=${lat},${lng}`;
 
-    if (!response.ok) {
-      console.error(`Safety alerts API request failed with status ${response.status}`);
-      throw new Error(`Safety alerts API request failed (${response.status})`);
-    }
+    const options = USE_PROXY
+      ? {}
+      : {
+          headers: {
+            'User-Agent': 'news-weather-dashboard (youremail@example.com)',
+            'Accept': 'application/ld+json',
+          },
+        };
 
+    const response = await fetch(url, options);
+    if (!response.ok) throw new Error('Safety alerts API request failed');
     const data = await response.json();
 
-    if (!data || !Array.isArray(data.features)) {
-      console.warn('Unexpected NWS API format:', data);
-      return [];
-    }
+    if (!data || !Array.isArray(data.features)) return [];
 
     return data.features.map((alert: any, index: number) => ({
       id: `alert-${index}`,
@@ -110,8 +98,8 @@ export async function fetchSafetyAlerts(lat: number, lng: number): Promise<Safet
       title: alert.properties?.event ?? 'Unknown Event',
       description: alert.properties?.headline ?? alert.properties?.description ?? 'No description available',
       severity: getSeverityLevel(alert.properties?.severity),
-      issuedAt: alert.properties?.sent,     // ISO
-      expiresAt: alert.properties?.expires, // ISO | undefined
+      issuedAt: alert.properties?.sent,
+      expiresAt: alert.properties?.expires,
     }));
   } catch (error) {
     console.error('Safety alerts API error:', error);
@@ -119,27 +107,22 @@ export async function fetchSafetyAlerts(lat: number, lng: number): Promise<Safet
   }
 }
 
-// -----------------------------
-// Geocoding (OpenWeather Direct)
-// -----------------------------
+// ----------------------------
+// GEOCODING
+// ----------------------------
 export async function geocodeLocation(query: string) {
   try {
-    if (!WEATHER_API_KEY) throw new Error('Missing WEATHER_API_KEY');
-
     const response = await fetch(
       `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=5&appid=${WEATHER_API_KEY}`
     );
 
-    if (!response.ok) throw new Error(`Geocoding request failed (${response.status})`);
-
+    if (!response.ok) throw new Error('Geocoding request failed');
     const data = await response.json();
 
-    if (!Array.isArray(data)) return [];
-
-    return data.map((loc: any) => ({
-      name: `${loc.name}, ${loc.state || loc.country}`,
-      lat: loc.lat,
-      lng: loc.lon,
+    return data.map((location: any) => ({
+      name: `${location.name}, ${location.state || location.country}`,
+      lat: location.lat,
+      lng: location.lon,
     }));
   } catch (error) {
     console.error('Geocoding error:', error);
@@ -147,9 +130,9 @@ export async function geocodeLocation(query: string) {
   }
 }
 
-// =====================
-// Helpers & Mock Data
-// =====================
+// ----------------------------
+// HELPERS
+// ----------------------------
 function getWeatherIcon(condition: string): string {
   const iconMap: Record<string, string> = {
     Clear: '☀️',
@@ -164,15 +147,14 @@ function getWeatherIcon(condition: string): string {
   return iconMap[condition] || '🌤️';
 }
 
-function getSeverityLevel(severity: string | undefined): 'low' | 'medium' | 'high' | 'critical' {
-  const map: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
+function getSeverityLevel(severity: string): 'low' | 'medium' | 'high' {
+  const severityMap: Record<string, 'low' | 'medium' | 'high'> = {
     Minor: 'low',
     Moderate: 'medium',
     Severe: 'high',
-    Extreme: 'critical',
+    Extreme: 'high',
   };
-  if (!severity) return 'medium';
-  return map[severity] ?? 'medium';
+  return severityMap[severity] || 'medium';
 }
 
 function getMockWeatherData() {
@@ -183,7 +165,7 @@ function getMockWeatherData() {
     windSpeed: 8,
     icon: '⛅',
     updatedAt: Date.now(),
-    locationName: 'Mock Location',
+    locationName: 'Mock City',
   };
 }
 
