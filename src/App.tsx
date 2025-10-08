@@ -5,8 +5,7 @@ import { AddLocationDialog } from './components/AddLocationDialog';
 import { DashboardHeader } from './components/DashboardHeader';
 import { AlertTicker } from './components/AlertTicker';
 import { Location, SortOption, ViewMode } from './types/dashboard';
-import './services/supabaseClient'; // ensures the file executes
-// or: import { supabase } from './services/supabaseClient';
+
 
 // import { mockLocations } from './data/mockData'; // disabled
 import { fetchWeatherData, fetchNewsData, fetchSafetyAlerts } from './services/api';
