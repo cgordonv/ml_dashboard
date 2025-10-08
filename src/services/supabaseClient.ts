@@ -1,14 +1,26 @@
 // src/services/supabaseClient.ts
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL!;
-const anon = import.meta.env.VITE_SUPABASE_ANON_KEY!;
+const url  = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const supabase = createClient(url, anon);
+let supabase: SupabaseClient | null = null;
 
-// Expose for console debugging
+try {
+  if (!url || !anon) {
+    console.warn('[supabaseClient] Missing envs: VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY');
+  } else {
+    supabase = createClient(url, anon);
+  }
+} catch (e) {
+  console.error('[supabaseClient] Failed to create client', e);
+  supabase = null;
+}
+
+export { supabase };
+
+// Optional: expose for console testing & confirm execution
 if (typeof window !== 'undefined') {
   (window as any)._supabase = supabase;
-  // optional debug:
-  // console.log('Supabase client ready:', !!url, !!anon);
+  console.log('[supabaseClient] ready. url?', !!url, 'anon?', !!anon, 'client?', !!supabase);
 }
