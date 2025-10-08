@@ -1,151 +1,124 @@
-import { useState, useEffect } from 'react';
-import { Location } from '../types/dashboard';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import { Card, CardContent } from './ui/card';
-import { AlertTriangle, Info, X } from 'lucide-react';
+import { AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import type { Location, SafetyAlert } from '../types/dashboard';
 
-interface AlertTickerProps {
+interface Props {
   locations: Location[];
   onLocationClick: (location: Location) => void;
 }
 
-interface TickerAlert {
-  locationId: string;
-  locationName: string;
-  locationNickname: string;
-  alertId: string;
-  title: string;
-  severity: 'low' | 'medium' | 'high';
-  type: 'warning' | 'watch' | 'advisory';
+type AlertWithLoc = SafetyAlert & { __loc: Location };
+
+function severityClass(sev: SafetyAlert['severity']) {
+  switch (sev) {
+    case 'critical': return 'bg-red-600 text-white';
+    case 'high':     return 'bg-red-500 text-white';
+    case 'medium':   return 'bg-yellow-500 text-white';
+    case 'low':      return 'bg-blue-500 text-white';
+    default:         return 'bg-gray-500 text-white';
+  }
 }
 
-export function AlertTicker({ locations, onLocationClick }: AlertTickerProps) {
-  const [isVisible, setIsVisible] = useState(true);
-  const [currentIndex, setCurrentIndex] = useState(0);
+export function AlertTicker({ locations, onLocationClick }: Props) {
+  // Flatten all alerts across locations, newest first
+  const alerts = useMemo<AlertWithLoc[]>(() => {
+    const list: AlertWithLoc[] = [];
+    for (const loc of locations) {
+      for (const a of loc.safetyAlerts || []) {
+        list.push({ ...a, __loc: loc });
+      }
+    }
+    // sort by issuedAt desc if present
+    list.sort((a, b) => {
+      const ta = a.issuedAt ? Date.parse(a.issuedAt) : 0;
+      const tb = b.issuedAt ? Date.parse(b.issuedAt) : 0;
+      return tb - ta;
+    });
+    return list;
+  }, [locations]);
 
-  // Collect all severe alerts from all locations
-  const allAlerts: TickerAlert[] = locations.flatMap(location => 
-    location.safetyAlerts
-      .filter(alert => alert.severity === 'high' || alert.severity === 'medium')
-      .map(alert => ({
-        locationId: location.id,
-        locationName: location.name,
-        locationNickname: location.nickname,
-        alertId: alert.id,
-        title: alert.title,
-        severity: alert.severity,
-        type: alert.type
-      }))
-  );
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [index, setIndex] = useState(0);
 
-  // Auto-scroll through alerts if there are multiple
+  // Auto-advance the carousel
   useEffect(() => {
-    if (allAlerts.length > 1) {
-      const interval = setInterval(() => {
-        setCurrentIndex((prev) => (prev + 1) % allAlerts.length);
-      }, 4000);
-      return () => clearInterval(interval);
-    }
-  }, [allAlerts.length]);
+    if (!alerts.length) return;
+    const id = setInterval(() => {
+      setIndex((i) => (i + 1) % alerts.length);
+    }, 6000);
+    return () => clearInterval(id);
+  }, [alerts.length]);
 
-  // Don't render if no severe alerts or if dismissed
-  if (!isVisible || allAlerts.length === 0) {
-    return null;
-  }
-
-  const currentAlert = allAlerts[currentIndex];
-  const location = locations.find(loc => loc.id === currentAlert.locationId);
-
-  const getSeverityColor = (severity: 'low' | 'medium' | 'high') => {
-    switch (severity) {
-      case 'high':
-        return 'bg-red-500/10 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-800';
-      case 'medium':
-        return 'bg-orange-500/10 text-orange-700 border-orange-200 dark:bg-orange-500/20 dark:text-orange-400 dark:border-orange-800';
-      default:
-        return 'bg-blue-500/10 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-800';
-    }
-  };
-
-  const getSeverityIcon = (severity: 'low' | 'medium' | 'high') => {
-    if (severity === 'high') {
-      return <AlertTriangle className="h-4 w-4" />;
-    }
-    return <Info className="h-4 w-4" />;
-  };
+  // Scroll to active item
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el || !alerts.length) return;
+    const child = el.children[index] as HTMLElement | undefined;
+    if (child) child.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [index, alerts.length]);
 
   return (
-    <Card className={`mb-6 border-l-4 ${
-      currentAlert.severity === 'high' 
-        ? 'border-l-red-500' 
-        : currentAlert.severity === 'medium' 
-        ? 'border-l-orange-500' 
-        : 'border-l-blue-500'
-    }`}>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            {/* Alert Icon */}
-            <div className={`flex items-center justify-center w-8 h-8 rounded-full ${getSeverityColor(currentAlert.severity)}`}>
-              {getSeverityIcon(currentAlert.severity)}
-            </div>
-            
-            {/* Alert Content */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <Badge variant="outline" className="text-xs">
-                  {currentAlert.type.toUpperCase()}
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  {currentAlert.locationNickname}
-                </span>
-                {allAlerts.length > 1 && (
-                  <span className="text-xs bg-muted text-muted-foreground px-2 py-1 rounded">
-                    {currentIndex + 1} of {allAlerts.length}
-                  </span>
-                )}
-              </div>
-              <p className="text-sm truncate">
-                <span className="font-medium">{currentAlert.title}</span>
-              </p>
-            </div>
-            
-            {/* Action Button */}
+    <Card className="border border-muted">
+      <CardContent className="py-3">
+        <div className="flex items-center gap-3">
+          <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0" />
+          <div className="font-medium">
+            Safety Alerts
+            <span className="text-muted-foreground ml-2">
+              ({alerts.length})
+            </span>
+          </div>
+
+          {/* Carousel controls */}
+          <div className="ml-auto flex items-center gap-1">
             <Button
-              variant="outline"
-              size="sm"
-              onClick={() => location && onLocationClick(location)}
-              className="flex-shrink-0"
+              variant="ghost"
+              size="icon"
+              onClick={() => setIndex((i) => (i - 1 + Math.max(alerts.length, 1)) % Math.max(alerts.length, 1))}
+              disabled={!alerts.length}
+              title="Previous"
             >
-              View Details
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIndex((i) => (i + 1) % Math.max(alerts.length, 1))}
+              disabled={!alerts.length}
+              title="Next"
+            >
+              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          
-          {/* Dismiss Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsVisible(false)}
-            className="ml-2 flex-shrink-0"
-          >
-            <X className="h-4 w-4" />
-          </Button>
         </div>
-        
-        {/* Progress Indicator for Multiple Alerts */}
-        {allAlerts.length > 1 && (
-          <div className="flex gap-1 mt-3">
-            {allAlerts.map((_, index) => (
-              <div
-                key={index}
-                className={`h-1 flex-1 rounded-full transition-colors ${
-                  index === currentIndex 
-                    ? 'bg-primary' 
-                    : 'bg-muted'
-                }`}
-              />
+
+        {/* Strip */}
+        {alerts.length ? (
+          <div
+            ref={scrollerRef}
+            className="mt-3 flex gap-3 overflow-x-auto scroll-smooth snap-x snap-mandatory px-1"
+          >
+            {alerts.map((a, i) => (
+              <button
+                key={a.id + '-' + i}
+                className="snap-center shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 bg-card hover:bg-accent transition-colors"
+                onClick={() => onLocationClick(a.__loc)}
+                title={`View ${a.__loc.nickname || a.__loc.name}`}
+              >
+                <Badge className={`mr-2 ${severityClass(a.severity)}`}>{a.severity}</Badge>
+                <span className="font-medium">{a.title}</span>
+                <span className="text-muted-foreground ml-2">
+                  · {a.__loc.nickname || a.__loc.name}
+                </span>
+              </button>
             ))}
+          </div>
+        ) : (
+          <div className="mt-3 text-sm text-muted-foreground">
+            No active alerts right now.
           </div>
         )}
       </CardContent>

@@ -37,6 +37,21 @@ export async function fetchWeatherData(lat: number, lng: number) {
   }
 }
 
+// Build a static radar snapshot image (centered on lat,lng)
+// Docs pattern: https://tilecache.rainviewer.com/v2/radar/last/{size}/{lat},{lng}/{zoom}/{opacity}_{snow}.png
+export function buildRadarImageUrl(lat: number, lng: number, size = 768, zoom = 7) {
+  const clampedZoom = Math.min(12, Math.max(3, zoom));
+  const cacheBust = Date.now(); // avoid stale caching
+  return `https://tilecache.rainviewer.com/v2/radar/last/${size}/${lat},${lng}/${clampedZoom}/1_1.png?cb=${cacheBust}`;
+}
+
+// Nice “live radar” page centered on your lat/lng
+export function buildLiveRadarLink(lat: number, lng: number, zoom = 7) {
+  const clampedZoom = Math.min(12, Math.max(3, zoom));
+  return `https://www.rainviewer.com/map.html?loc=${lat},${lng},${clampedZoom},oFa`;
+}
+
+
 // ----------------------------
 // NEWS API
 // ----------------------------
