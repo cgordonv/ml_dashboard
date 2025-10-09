@@ -23,7 +23,7 @@ function severityClass(sev: SafetyAlert['severity']) {
 }
 
 export function AlertTicker({ locations, onLocationClick }: Props) {
-  // Flatten all alerts across locations, newest first
+  // Flatten alerts across all locations, newest first
   const alerts = useMemo<AlertWithLoc[]>(() => {
     const list: AlertWithLoc[] = [];
     for (const loc of locations) {
@@ -31,7 +31,6 @@ export function AlertTicker({ locations, onLocationClick }: Props) {
         list.push({ ...a, __loc: loc });
       }
     }
-    // sort by issuedAt desc if present
     list.sort((a, b) => {
       const ta = a.issuedAt ? Date.parse(a.issuedAt) : 0;
       const tb = b.issuedAt ? Date.parse(b.issuedAt) : 0;
@@ -43,7 +42,7 @@ export function AlertTicker({ locations, onLocationClick }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
 
-  // Auto-advance the carousel
+  // Auto-advance
   useEffect(() => {
     if (!alerts.length) return;
     const id = setInterval(() => {
@@ -52,7 +51,7 @@ export function AlertTicker({ locations, onLocationClick }: Props) {
     return () => clearInterval(id);
   }, [alerts.length]);
 
-  // Scroll to active item
+  // Scroll active chip into view
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el || !alerts.length) return;
@@ -67,35 +66,27 @@ export function AlertTicker({ locations, onLocationClick }: Props) {
           <AlertTriangle className="h-4 w-4 text-orange-500 shrink-0" />
           <div className="font-medium">
             Safety Alerts
-            <span className="text-muted-foreground ml-2">
-              ({alerts.length})
-            </span>
+            <span className="text-muted-foreground ml-2">({alerts.length})</span>
           </div>
 
-          {/* Carousel controls */}
           <div className="ml-auto flex items-center gap-1">
             <Button
-              variant="ghost"
-              size="icon"
+              variant="ghost" size="icon" title="Previous"
               onClick={() => setIndex((i) => (i - 1 + Math.max(alerts.length, 1)) % Math.max(alerts.length, 1))}
               disabled={!alerts.length}
-              title="Previous"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
             <Button
-              variant="ghost"
-              size="icon"
+              variant="ghost" size="icon" title="Next"
               onClick={() => setIndex((i) => (i + 1) % Math.max(alerts.length, 1))}
               disabled={!alerts.length}
-              title="Next"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
-        {/* Strip */}
         {alerts.length ? (
           <div
             ref={scrollerRef}
@@ -110,16 +101,12 @@ export function AlertTicker({ locations, onLocationClick }: Props) {
               >
                 <Badge className={`mr-2 ${severityClass(a.severity)}`}>{a.severity}</Badge>
                 <span className="font-medium">{a.title}</span>
-                <span className="text-muted-foreground ml-2">
-                  · {a.__loc.nickname || a.__loc.name}
-                </span>
+                <span className="text-muted-foreground ml-2">· {a.__loc.nickname || a.__loc.name}</span>
               </button>
             ))}
           </div>
         ) : (
-          <div className="mt-3 text-sm text-muted-foreground">
-            No active alerts right now.
-          </div>
+          <div className="mt-3 text-sm text-muted-foreground">No active alerts right now.</div>
         )}
       </CardContent>
     </Card>

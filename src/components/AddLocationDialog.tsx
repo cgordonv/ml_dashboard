@@ -92,13 +92,18 @@ export function AddLocationDialog({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {editingLocation ? 'Edit Location' : 'Add New Location'}
-          </DialogTitle>
-        </DialogHeader>
+<Dialog open={isOpen} onOpenChange={onClose}>
+  <DialogContent aria-describedby="add-location-desc">
+    <DialogHeader>
+      <DialogTitle>Add Location</DialogTitle>
+      <DialogDescription id="add-location-desc">
+        Enter a city and optional nickname. We’ll fetch weather, alerts, and local news.
+      </DialogDescription>
+    </DialogHeader>
+    {/* ... */}
+  </DialogContent>
+</Dialog>
+
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
