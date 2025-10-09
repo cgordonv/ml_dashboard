@@ -3,8 +3,9 @@ import { Card, CardHeader, CardTitle, CardContent } from './ui/card';
 import { Button } from './ui/button';
 import { RefreshCw, ExternalLink } from 'lucide-react';
 import type { Location } from '../types/dashboard';
-import '/public/radar-fallback.png';
 
+// Ensure Vite/Vercel bundles the fallback asset
+import '/public/radar-fallback.png';
 
 /**
  * RainViewer static radar snapshot (no API key).
@@ -73,7 +74,7 @@ export function RadarHeader({ location }: Props) {
             onError={(e) => {
               if (erroredRef.current) return;
               erroredRef.current = true;
-              (e.currentTarget as HTMLImageElement).src = '/radar-fallback.png'; // add this file in /public (see step 4)
+              (e.currentTarget as HTMLImageElement).src = '/radar-fallback.png';
             }}
           />
           <div className="px-4 py-2 text-sm text-muted-foreground text-right">
