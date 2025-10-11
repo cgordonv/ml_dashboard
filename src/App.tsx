@@ -17,24 +17,22 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('name');
 
-  // Load locations from localStorage
+  // Load saved locations
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        setLocations(JSON.parse(saved));
-      }
+      if (saved) setLocations(JSON.parse(saved));
     } catch (err) {
       console.warn('Failed to parse saved locations', err);
     }
   }, []);
 
-  // Save locations
+  // Persist locations
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(locations));
   }, [locations]);
 
-  // Compute latest “refreshed” time across all locations
+  // Compute “last refreshed”
   const lastRefreshed = useMemo(() => {
     if (!locations.length) return undefined;
 
@@ -54,6 +52,7 @@ export default function App() {
     return ts > 0 ? ts : undefined;
   }, [locations]);
 
+  // Add a new location
   const handleAddLocation = async (name: string, lat: number, lng: number) => {
     const id = uuid();
     const newLocation: Location = { id, name, lat, lng };
@@ -69,16 +68,35 @@ export default function App() {
       newLocation.alerts = alerts;
       newLocation.news = news;
       newLocation.lastUpdated = new Date().toISOString();
+
       setLocations((prev) => [...prev, newLocation]);
     } catch (err) {
       console.error('Failed to add location', err);
     }
   };
 
-  const handleDelete = (id: string) => setLocations((prev) => prev.filter((l) => l.id !== id));
-  const handleSelect = (loc: Location) => setSelectedLocation(loc);
-  const handleBackToDashboard = () => setSelectedLocation(null);
-  const handleEditLocation = (loc: Location) => setSelectedLocation(loc);
+  // Sorting
+  const sortedLocations = useMemo(() => {
+    const copy = [...locations];
+    switch (sortBy) {
+      case 'nickname':
+        copy.sort((a, b) => (a.nickname || '').localeCompare(b.nickname || ''));
+        break;
+      case 'alerts':
+        copy.sort((a, b) => (b.alerts?.length || 0) - (a.alerts?.length || 0));
+        break;
+      case 'lastUpdated':
+        copy.sort(
+          (a, b) =>
+            new Date(b.lastUpdated || 0).getTime() -
+            new Date(a.lastUpdated || 0).getTime()
+        );
+        break;
+      default:
+        copy.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return copy;
+  }, [locations, sortBy]);
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'dark' : ''}`}>
@@ -91,31 +109,35 @@ export default function App() {
         locationCount={locations.length}
         lastRefreshed={lastRefreshed}
       />
+
       <AlertTicker locations={locations} />
 
       {!selectedLocation ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-          {locations.map((loc) => (
+          {sortedLocations.map((loc) => (
             <LocationCard
               key={loc.id}
               location={loc}
-              onSelect={handleSelect}
-              onDelete={handleDelete}
+              onSelect={() => setSelectedLocation(loc)}
+              onDelete={() =>
+                setLocations((prev) => prev.filter((l) => l.id !== loc.id))
+              }
             />
           ))}
         </div>
       ) : (
         <LocationDetail
           location={selectedLocation}
-          onBack={handleBackToDashboard}
-          onEdit={handleEditLocation}
+          onBack={() => setSelectedLocation(null)}
+          onEdit={(loc) => setSelectedLocation(loc)}
         />
       )}
 
       <AddLocationDialog
-        open={isAddDialogOpen}
-        onOpenChange={setIsAddDialogOpen}
-        onAdd={handleAddLocation}
+        isOpen={isAddDialogOpen}
+        onClose={() => setIsAddDialogOpen(false)}
+        onSave={(loc) => setLocations((prev) => [...prev, loc])}
+        editingLocation={null}
       />
     </div>
   );
