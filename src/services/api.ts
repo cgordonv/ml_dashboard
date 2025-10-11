@@ -7,6 +7,28 @@ const ACCUWEATHER_API_KEY = import.meta.env.VITE_ACCUWEATHER_API_KEY; // not use
 
 // ---------- WEATHER (OpenWeather) ----------
 export async function fetchWeatherData(lat: number, lng: number) {
+  // Try proxy first (works on Vercel & when running `vercel dev`)
+  try {
+    const proxied = await fetch(`/api/weather?lat=${lat}&lng=${lng}`);
+    if (proxied.ok) {
+      const data = await proxied.json();
+      return {
+        temperature: Math.round(data.main?.temp ?? 0),
+        condition: data.weather?.[0]?.description ?? '—',
+        humidity: data.main?.humidity ?? 0,
+        windSpeed: Math.round(data.wind?.speed ?? 0),
+        icon: getWeatherIcon(data.weather?.[0]?.main ?? ''),
+        updatedAt: data.dt ? data.dt * 1000 : Date.now(),
+        locationName: data.name || '',
+        countryCode: data.sys?.country || '',
+      };
+    }
+    console.warn('Proxy /api/weather returned', proxied.status);
+  } catch (e) {
+    console.warn('Proxy /api/weather not available locally, falling back direct', e);
+  }
+
+  // Fallback: direct (may CORS-fail in some browsers during local dev)
   if (!WEATHER_API_KEY) {
     console.warn('Weather API key not configured, using mock data');
     return getMockWeatherData();
@@ -17,7 +39,6 @@ export async function fetchWeatherData(lat: number, lng: number) {
     );
     if (!resp.ok) throw new Error('Weather API request failed');
     const data = await resp.json();
-
     return {
       temperature: Math.round(data.main?.temp ?? 0),
       condition: data.weather?.[0]?.description ?? '—',
@@ -26,12 +47,14 @@ export async function fetchWeatherData(lat: number, lng: number) {
       icon: getWeatherIcon(data.weather?.[0]?.main ?? ''),
       updatedAt: data.dt ? data.dt * 1000 : Date.now(),
       locationName: data.name || '',
+      countryCode: data.sys?.country || '',
     };
   } catch (e) {
     console.error('Weather API error:', e);
     return getMockWeatherData();
   }
 }
+
 
 // ---------- NEWS (proxy → English-only + local bias) ----------
 export async function fetchNewsDataForLocation(name: string): Promise<NewsItem[]> {

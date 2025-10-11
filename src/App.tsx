@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LocationCard } from './components/LocationCard';
 import { LocationDetail } from './components/LocationDetail';
-import { AddLocationDialog } from './components/AddLocationDialog';
+import AddLocationDialog from './components/AddLocationDialog';
+
 import { DashboardHeader } from './components/DashboardHeader';
 import { AlertTicker } from './components/AlertTicker';
 import type { Location, SortOption, ViewMode } from './types/dashboard';
@@ -28,43 +29,75 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   // Theme toggle
-  useEffect(() => {
-    const root = document.documentElement;
-    if (isDarkMode) root.classList.add('dark');
-    else root.classList.remove('dark');
-  }, [isDarkMode]);
+ useEffect(() => {
+  if (locations.length > 0) return;
 
-  // Latest "refreshed" timestamp across all locations (weather.updatedAt or lastUpdated)
-  const lastRefreshed = useMemo(() => {
-    if (!locations.length) return undefined;
-    const ts = locations
-      .map((l) => Math.max((l.weather as any)?.updatedAt ?? 0, toMs(l.lastUpdated)))
-      .reduce((a, b) => Math.max(a, b), 0);
-    return ts > 0 ? ts : undefined;
-  }, [locations]);
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
 
-  // Sort locations
-  const sortedLocations = useMemo(() => {
-    const copy = [...locations];
-    copy.sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return a.name.localeCompare(b.name);
-        case 'nickname':
-          return a.nickname.localeCompare(b.nickname);
-        case 'alerts':
-          return b.safetyAlerts.length - a.safetyAlerts.length;
-        case 'lastUpdated': {
-          const ta = Math.max((a.weather as any)?.updatedAt ?? 0, toMs(a.lastUpdated));
-          const tb = Math.max((b.weather as any)?.updatedAt ?? 0, toMs(b.lastUpdated));
-          return tb - ta;
+      try {
+        // Weather + alerts are required
+        const [wx, alerts] = await Promise.all([
+          fetchWeatherData(lat, lng),
+          fetchSafetyAlerts(lat, lng),
+        ]);
+
+        const city = wx?.locationName || `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+        const country = (wx as any)?.countryCode || 'us';
+
+        // News is optional: never fail the whole flow
+        let news: any[] = [];
+        try {
+          // If you’re running `npm run dev`, /api/news may not exist locally.
+          // This call will work on Vercel or if you run `vercel dev`.
+          const r = await fetch(`/api/news?q=${encodeURIComponent(city)}&country=${country}`);
+          if (r.ok) {
+            const data = await r.json();
+            news = data.articles || [];
+          } else {
+            console.warn('News proxy returned', r.status);
+          }
+        } catch (e) {
+          console.warn('News proxy not available locally (ok during npm run dev)', e);
         }
-        default:
-          return 0;
+
+        const updatedAtMs = wx?.updatedAt ?? Date.now();
+
+        const newLoc: Location = {
+          id: uuid(),
+          name: wx?.locationName || 'Current Location',
+          nickname: 'Current',
+          coordinates: { lat, lng },
+          weather: {
+            temperature: wx?.temperature ?? 0,
+            condition: wx?.condition ?? '—',
+            icon: wx?.icon ?? '🌤️',
+            humidity: wx?.humidity ?? 0,
+            windSpeed: wx?.windSpeed ?? 0,
+            // @ts-ignore
+            updatedAt: updatedAtMs,
+          } as any,
+          safetyAlerts: alerts ?? [],
+          news,
+          lastUpdated: updatedAtMs,
+        };
+
+        setLocations([newLoc]);
+        setSelectedLocation(newLoc);
+      } catch (e) {
+        console.warn('Initial load error', e);
       }
-    });
-    return copy;
-  }, [locations, sortBy]);
+    },
+    (err) => {
+      console.warn('Geolocation error', err);
+      // No-op; user can add locations manually
+    }
+  );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [locations.length]);
+
 
   // On first load, try current geolocation -> fetch weather/alerts/news
   useEffect(() => {
@@ -81,9 +114,14 @@ export default function App() {
             fetchSafetyAlerts(lat, lng),
           ]);
 
-          // local news based on OpenWeather city name (fallback to coords string)
-          const city = wx?.locationName || `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
-          const news = await fetchNewsDataForLocation(city);
+         // local news based on OpenWeather city name (fallback to coords string)
+const city = wx?.locationName || `${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+const newsResponse = await fetch(
+  `/api/news?q=${encodeURIComponent(city)}&country=${wx?.countryCode || 'us'}`
+);
+const newsData = await newsResponse.json();
+const news = newsData.articles || [];
+
 
           const updatedAtMs = wx?.updatedAt ?? Date.now();
 
@@ -205,14 +243,25 @@ export default function App() {
             )}
           </div>
         ) : (
-          selectedLocation && (
-            <LocationDetail
-              location={selectedLocation}
-              onBack={handleBackToDashboard}
-              onEdit={handleEditLocation}
-            />
-          )
-        )}
+  selectedLocation && (
+    <div className="space-y-6">
+      {/* 🌦️ Radar Header (static image + live link) */}
+      <RadarHeader
+        lat={selectedLocation.coordinates.lat}
+        lng={selectedLocation.coordinates.lng}
+        locationName={selectedLocation.name}
+      />
+
+      {/* Detailed view for the selected location */}
+      <LocationDetail
+        location={selectedLocation}
+        onBack={handleBackToDashboard}
+        onEdit={handleEditLocation}
+      />
+    </div>
+  )
+)}
+
 
         <AddLocationDialog
           isOpen={isAddDialogOpen}
