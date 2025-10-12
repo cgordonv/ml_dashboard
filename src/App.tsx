@@ -32,26 +32,6 @@ export default function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(locations));
   }, [locations]);
 
-  // Compute “last refreshed”
-  const lastRefreshed = useMemo(() => {
-    if (!locations.length) return undefined;
-
-    const toMs = (v: string | number | undefined): number => {
-      if (typeof v === 'number') return v;
-      if (typeof v === 'string') {
-        const n = Date.parse(v);
-        return Number.isFinite(n) ? n : 0;
-      }
-      return 0;
-    };
-
-    const ts = locations
-      .map((l) => Math.max((l.weather as any)?.updatedAt ?? 0, toMs(l.lastUpdated)))
-      .reduce((a, b) => Math.max(a, b), 0);
-
-    return ts > 0 ? ts : undefined;
-  }, [locations]);
-
   // Add a new location
   const handleAddLocation = async (name: string, lat: number, lng: number) => {
     const id = uuid();
@@ -107,7 +87,7 @@ export default function App() {
         onSortChange={setSortBy}
         onAddLocation={() => setIsAddDialogOpen(true)}
         locationCount={locations.length}
-        lastRefreshed={lastRefreshed}
+        // no lastRefreshed prop here
       />
 
       <AlertTicker locations={locations} />
